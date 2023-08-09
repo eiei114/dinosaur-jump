@@ -195,8 +195,8 @@ func (g *Game) init() {
 	g.score = 0
 	g.lastTreeX = 0
 	g.gy = 0
-	g.dinosaurX = baseX
-	g.dinosaurY = groundY - dinosaurHeight
+	g.dinosaurX = 100
+	g.dinosaurY = 100
 	for i := 0; i < maxTreeCount; i++ {
 		g.trees[i] = &tree{}
 	}
@@ -214,40 +214,23 @@ func (g *Game) Update() error {
 		g.count++
 		g.score = g.count / 5
 
-		if !g.jumpFlg && g.isKeyJustPressed() {
-			g.jumpFlg = true
-			g.gy = -jumpingPower
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			g.dinosaurY -= 100
 		}
 
-		if g.jumpFlg {
-			g.dinosaurY += g.gy
-			g.gy += gravity
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.dinosaurY += 100
 		}
 
-		if g.dinosaurY >= groundY-dinosaurHeight {
-			g.jumpFlg = false
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			g.dinosaurX += 100
 		}
 
-		for _, t := range g.trees {
-			if t.visible {
-				t.move(speed)
-				if t.isOutOfScreen() {
-					t.hide()
-				}
-			} else {
-				if g.count-g.lastTreeX > minTreeDist && g.count%interval == 0 && rand.Intn(10) == 0 {
-					g.lastTreeX = g.count
-					t.show()
-					break
-				}
-			}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			g.dinosaurX -= 100
 		}
 
 		g.ground.move(speed)
-
-		if g.hit() {
-			g.mode = modeGameover
-		}
 	case modeGameover:
 		if g.isKeyJustPressed() {
 			g.init()
@@ -266,13 +249,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	var xs [3]int
 	var ys [3]int
 
-	if len(g.trees) > 0 {
-		for i, t := range g.trees {
-			xs[i] = t.x
-			ys[i] = t.y
-		}
-	}
-
 	if debug {
 		ebitenutil.DebugPrint(screen, fmt.Sprintf(
 			"g.y: %d\nTree1 x:%d, y:%d\nTree2 x:%d, y:%d\nTree3 x:%d, y:%d",
@@ -287,7 +263,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	g.drawGround(screen)
-	g.drawTrees(screen)
 	g.drawDinosaur(screen)
 
 	switch g.mode {
@@ -300,29 +275,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) drawDinosaur(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(baseX, float64(g.dinosaurY))
+	op.GeoM.Translate(float64(g.dinosaurX), float64(g.dinosaurY))
 	op.Filter = ebiten.FilterLinear
 	if (g.count/5)%2 == 0 {
 		screen.DrawImage(dinosaur1Img, op)
 		return
 	}
 	screen.DrawImage(dinosaur2Img, op)
-}
-
-func (g *Game) drawTrees(screen *ebiten.Image) {
-	for _, t := range g.trees {
-		if t.visible {
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(t.x), float64(t.y))
-			op.Filter = ebiten.FilterLinear
-			switch t.kind {
-			case kindTreeSmall:
-				screen.DrawImage(treeSmallImg, op)
-			case kindTreeBig:
-				screen.DrawImage(treeBigImg, op)
-			}
-		}
-	}
 }
 
 func (g *Game) drawGround(screen *ebiten.Image) {
@@ -342,27 +301,8 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func (g *Game) isKeyJustPressed() bool {
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 		return true
-	}
-	return false
-}
-
-func (g *Game) hit() bool {
-	hitDinosaurMinX := g.dinosaurX + 20
-	hitDinosaurMaxX := g.dinosaurX + dinosaurWidth - 15
-	hitDinosaurMaxY := g.dinosaurY + dinosaurHeight - 10
-
-	for _, t := range g.trees {
-		hitTreeMinX := t.x + 5
-		hitTreeMaxX := t.x + treeSmallWidth - 5
-		hitTreeMinY := t.y + 5
-
-		if t.visible {
-			if hitDinosaurMaxX-hitTreeMinX > 0 && hitTreeMaxX-hitDinosaurMinX > 0 && hitDinosaurMaxY-hitTreeMinY > 0 {
-				return true
-			}
-		}
 	}
 	return false
 }
