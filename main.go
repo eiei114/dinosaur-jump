@@ -166,6 +166,7 @@ func (g *Game) Update() error {
 		g.count++
 		g.score = g.count / 5
 
+		//todo マルチプラットフォームになるようにメソッド化する
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 			g.dinosaurY -= 100
 		}
