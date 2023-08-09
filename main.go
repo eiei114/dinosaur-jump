@@ -9,6 +9,7 @@ import (
 	_ "image/png"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -21,37 +22,23 @@ import (
 )
 
 const (
-	debug        = false
-	screenX      = 640
-	screenY      = 480
-	baseX        = 100
-	groundY      = 400
-	speed        = 6
-	jumpingPower = 15
-	gravity      = 1
-	interval     = 10
-	minTreeDist  = 50
-	maxTreeCount = 3
-	fontSize     = 10
+	debug    = false
+	screenX  = 640
+	screenY  = 480
+	groundY  = 400
+	fontSize = 10
 
 	// game modes
 	modeTitle    = 0
-	modeGame     = 1
-	modeGameover = 2
-
-	// tree kinds
-	kindTreeSmall = 0
-	kindTreeBig   = 1
+	modeLogin    = 1
+	modeGame     = 2
+	modeGameover = 3
 
 	// image sizes
-	dinosaurHeight  = 50
-	dinosaurWidth   = 100
-	groundHeight    = 50
-	groundWidth     = 50
-	treeSmallWidth  = 25
-	treeSmallHeghit = 50
-	treeBigWidth    = 25
-	treeBigHeghit   = 75
+	dinosaurHeight = 50
+	dinosaurWidth  = 100
+	groundHeight   = 50
+	groundWidth    = 50
 )
 
 //go:embed resources/images/dinosaur_01.png
@@ -60,20 +47,12 @@ var byteDinosaur1Img []byte
 //go:embed resources/images/dinosaur_02.png
 var byteDinosaur2Img []byte
 
-//go:embed resources/images/tree_small.png
-var byteTreeSmallImg []byte
-
-//go:embed resources/images/tree_big.png
-var byteTreeBigImg []byte
-
 //go:embed resources/images/ground.png
 var byteGroundImg []byte
 
 var (
 	dinosaur1Img *ebiten.Image
 	dinosaur2Img *ebiten.Image
-	treeSmallImg *ebiten.Image
-	treeBigImg   *ebiten.Image
 	groundImg    *ebiten.Image
 	arcadeFont   font.Face
 )
@@ -93,18 +72,6 @@ func init() {
 	}
 	dinosaur2Img = ebiten.NewImageFromImage(img)
 
-	img, _, err = image.Decode(bytes.NewReader(byteTreeSmallImg))
-	if err != nil {
-		log.Fatal(err)
-	}
-	treeSmallImg = ebiten.NewImageFromImage(img)
-
-	img, _, err = image.Decode(bytes.NewReader(byteTreeBigImg))
-	if err != nil {
-		log.Fatal(err)
-	}
-	treeBigImg = ebiten.NewImageFromImage(img)
-
 	img, _, err = image.Decode(bytes.NewReader(byteGroundImg))
 	if err != nil {
 		log.Fatal(err)
@@ -121,37 +88,6 @@ func init() {
 		DPI:     dpi,
 		Hinting: font.HintingFull,
 	})
-}
-
-type tree struct {
-	x       int
-	y       int
-	kind    int
-	visible bool
-}
-
-func (t *tree) move(speed int) {
-	t.x -= speed
-}
-
-func (t *tree) show() {
-	t.kind = rand.Intn(2)
-	t.x = screenX
-	switch t.kind {
-	case kindTreeSmall:
-		t.y = groundY - treeSmallHeghit
-	case kindTreeBig:
-		t.y = groundY - treeBigHeghit
-	}
-	t.visible = true
-}
-
-func (t *tree) hide() {
-	t.visible = false
-}
-
-func (t *tree) isOutOfScreen() bool {
-	return t.x < -50
 }
 
 type ground struct {
@@ -174,11 +110,10 @@ type Game struct {
 	hiscore   int
 	dinosaurX int
 	dinosaurY int
-	gy        int
-	jumpFlg   bool
-	trees     [maxTreeCount]*tree
-	lastTreeX int
 	ground    *ground
+	runes     []rune
+	text      string
+	counter   int
 }
 
 // NewGame method
@@ -193,13 +128,8 @@ func (g *Game) init() {
 	g.hiscore = g.score
 	g.count = 0
 	g.score = 0
-	g.lastTreeX = 0
-	g.gy = 0
 	g.dinosaurX = 100
 	g.dinosaurY = 100
-	for i := 0; i < maxTreeCount; i++ {
-		g.trees[i] = &tree{}
-	}
 	g.ground = &ground{y: groundY - 30}
 }
 
@@ -207,10 +137,32 @@ func (g *Game) init() {
 func (g *Game) Update() error {
 	switch g.mode {
 	case modeTitle:
-		if g.isKeyJustPressed() {
+		if g.isKeySpaceJustPressed() {
+			g.mode = modeLogin
+		}
+	case modeLogin:
+		g.runes = ebiten.AppendInputChars(g.runes[:0])
+		g.text += string(g.runes)
+		// Adjust the string to be at most 10 lines.
+		ss := strings.Split(g.text, "\n")
+		if len(ss) > 10 {
+			g.text = strings.Join(ss[len(ss)-10:], "\n")
+		}
+
+		// If the backspace key is pressed, remove one character.
+		if repeatingKeyPressed(ebiten.KeyBackspace) {
+			if len(g.text) >= 1 {
+				g.text = g.text[:len(g.text)-1]
+			}
+		}
+
+		g.counter++
+
+		if g.isKeySpaceJustPressed() {
 			g.mode = modeGame
 		}
 	case modeGame:
+		//todo 障害物に当たったらゲームオーバーになるようにする
 		g.count++
 		g.score = g.count / 5
 
@@ -230,9 +182,8 @@ func (g *Game) Update() error {
 			g.dinosaurX -= 100
 		}
 
-		g.ground.move(speed)
 	case modeGameover:
-		if g.isKeyJustPressed() {
+		if g.isKeySpaceJustPressed() {
 			g.init()
 			g.mode = modeGame
 		}
@@ -268,6 +219,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.mode {
 	case modeTitle:
 		text.Draw(screen, "PRESS SPACE KEY", arcadeFont, 245, 240, color.Black)
+	case modeLogin:
+		//todo 名前を入力してとテキストを入れたい
+
+		// Blink the cursor.
+		t := g.text
+		if g.counter%60 < 30 {
+			t += "_"
+		}
+		text.Draw(screen, t, arcadeFont, 275, 240, color.Black)
+	case modeGame:
+
 	case modeGameover:
 		text.Draw(screen, "GAME OVER", arcadeFont, 275, 240, color.Black)
 	}
@@ -300,8 +262,31 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 	return screenX, screenY
 }
 
-func (g *Game) isKeyJustPressed() bool {
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+// repeatingKeyPressed return true when key is pressed considering the repeat state.
+func repeatingKeyPressed(key ebiten.Key) bool {
+	const (
+		delay    = 30
+		interval = 3
+	)
+	d := inpututil.KeyPressDuration(key)
+	if d == 1 {
+		return true
+	}
+	if d >= delay && (d-delay)%interval == 0 {
+		return true
+	}
+	return false
+}
+
+func (g *Game) isKeySpaceJustPressed() bool {
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		return true
+	}
+	return false
+}
+
+func (g *Game) isKeyEnterJustPressed() bool {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 		return true
 	}
 	return false
