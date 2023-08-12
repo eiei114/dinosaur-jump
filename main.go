@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/examples/resources/fonts"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -24,59 +23,46 @@ import (
 const (
 	debug    = false
 	screenX  = 640
-	screenY  = 480
-	groundY  = 400
+	screenY  = 640
 	fontSize = 10
 
 	// game modes
 	modeTitle    = 0
 	modeLogin    = 1
 	modeGame     = 2
-	modeGameover = 3
+	modeGameOver = 3
 
 	// image sizes
-	dinosaurHeight = 50
-	dinosaurWidth  = 100
-	groundHeight   = 50
-	groundWidth    = 50
+	wallHeight = 50
+	wallWidth  = 50
 )
 
-//go:embed resources/images/dinosaur_01.png
-var byteDinosaur1Img []byte
+//go:embed resources/images/player.png
+var bytePlayerImg []byte
 
-//go:embed resources/images/dinosaur_02.png
-var byteDinosaur2Img []byte
-
-//go:embed resources/images/ground.png
-var byteGroundImg []byte
+//go:embed resources/images/wall.png
+var byteWallImg []byte
 
 var (
-	dinosaur1Img *ebiten.Image
-	dinosaur2Img *ebiten.Image
-	groundImg    *ebiten.Image
-	arcadeFont   font.Face
+	playerImg  *ebiten.Image
+	wallImg    *ebiten.Image
+	arcadeFont font.Face
 )
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
 
-	img, _, err := image.Decode(bytes.NewReader(byteDinosaur1Img))
+	img, _, err := image.Decode(bytes.NewReader(bytePlayerImg))
 	if err != nil {
 		log.Fatal(err)
 	}
-	dinosaur1Img = ebiten.NewImageFromImage(img)
+	playerImg = ebiten.NewImageFromImage(img)
 
-	img, _, err = image.Decode(bytes.NewReader(byteDinosaur2Img))
+	img, _, err = image.Decode(bytes.NewReader(byteWallImg))
 	if err != nil {
 		log.Fatal(err)
 	}
-	dinosaur2Img = ebiten.NewImageFromImage(img)
-
-	img, _, err = image.Decode(bytes.NewReader(byteGroundImg))
-	if err != nil {
-		log.Fatal(err)
-	}
-	groundImg = ebiten.NewImageFromImage(img)
+	wallImg = ebiten.NewImageFromImage(img)
 
 	tt, err := opentype.Parse(fonts.PressStart2P_ttf)
 	if err != nil {
@@ -90,16 +76,20 @@ func init() {
 	})
 }
 
-type ground struct {
-	x int
-	y int
+type wall struct {
+	leftX   float64
+	rightX  float64
+	topY    float64
+	bottomY float64
+	size    int // 壁のサイズ、初期値は50で
 }
 
-func (g *ground) move(speed int) {
-	g.x -= speed
-	if g.x < -groundWidth {
-		g.x = g.x + groundWidth
-	}
+// 関数を更新して、速度に応じて壁を移動させる
+func (w *wall) move(speed float64) {
+	w.leftX += speed
+	w.rightX -= speed
+	w.topY += speed
+	w.bottomY -= speed
 }
 
 // Game struct
@@ -110,7 +100,7 @@ type Game struct {
 	hiscore   int
 	dinosaurX int
 	dinosaurY int
-	ground    *ground
+	wall      *wall // 壁の配列を追加
 	runes     []rune
 	text      string
 	counter   int
@@ -130,7 +120,14 @@ func (g *Game) init() {
 	g.score = 0
 	g.dinosaurX = 100
 	g.dinosaurY = 100
-	g.ground = &ground{y: groundY - 30}
+	// 壁の初期配置
+	g.wall = &wall{
+		leftX:   0,
+		rightX:  screenX - wallWidth,
+		topY:    0,
+		bottomY: screenY - wallHeight,
+		size:    50,
+	}
 }
 
 // Update method
@@ -158,7 +155,7 @@ func (g *Game) Update() error {
 
 		g.counter++
 
-		if g.isKeySpaceJustPressed() {
+		if g.isKeyEnterJustPressed() {
 			g.mode = modeGame
 		}
 	case modeGame:
@@ -168,22 +165,24 @@ func (g *Game) Update() error {
 
 		//todo マルチプラットフォームになるようにメソッド化する
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-			g.dinosaurY -= 100
+			g.dinosaurY -= 50
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-			g.dinosaurY += 100
+			g.dinosaurY += 50
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
-			g.dinosaurX += 100
+			g.dinosaurX += 50
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
-			g.dinosaurX -= 100
+			g.dinosaurX -= 50
 		}
 
-	case modeGameover:
+		g.wall.move(0.1) // 速度は任意で設定可能
+
+	case modeGameOver:
 		if g.isKeySpaceJustPressed() {
 			g.init()
 			g.mode = modeGame
@@ -198,24 +197,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
 	text.Draw(screen, fmt.Sprintf("Hisore: %d", g.hiscore), arcadeFont, 300, 20, color.Black)
 	text.Draw(screen, fmt.Sprintf("Score: %d", g.score), arcadeFont, 500, 20, color.Black)
-	var xs [3]int
-	var ys [3]int
 
-	if debug {
-		ebitenutil.DebugPrint(screen, fmt.Sprintf(
-			"g.y: %d\nTree1 x:%d, y:%d\nTree2 x:%d, y:%d\nTree3 x:%d, y:%d",
-			g.dinosaurY,
-			xs[0],
-			ys[0],
-			xs[1],
-			ys[1],
-			xs[2],
-			ys[2],
-		))
-	}
-
-	g.drawGround(screen)
-	g.drawDinosaur(screen)
+	g.drawWall(screen) // 壁を描画
+	g.drawPlayer(screen)
 
 	switch g.mode {
 	case modeTitle:
@@ -231,31 +215,45 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		text.Draw(screen, t, arcadeFont, 275, 240, color.Black)
 	case modeGame:
 
-	case modeGameover:
+	case modeGameOver:
 		text.Draw(screen, "GAME OVER", arcadeFont, 275, 240, color.Black)
 	}
 }
 
-func (g *Game) drawDinosaur(screen *ebiten.Image) {
+func (g *Game) drawPlayer(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(g.dinosaurX), float64(g.dinosaurY))
+	op.ColorM.Scale(0, 0.99, 0.89, 1) // この例では、赤はそのまま、緑は0.99倍、青は0.89倍にスケーリングされます。
 	op.Filter = ebiten.FilterLinear
-	if (g.count/5)%2 == 0 {
-		screen.DrawImage(dinosaur1Img, op)
-		return
-	}
-	screen.DrawImage(dinosaur2Img, op)
+	screen.DrawImage(playerImg, op)
 }
 
-func (g *Game) drawGround(screen *ebiten.Image) {
-	for i := 0; i < 14; i++ {
-		x := float64(groundWidth * i)
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(x, float64(g.ground.y))
-		op.GeoM.Translate(float64(g.ground.x), 0.0)
-		op.Filter = ebiten.FilterLinear
-		screen.DrawImage(groundImg, op)
-	}
+func (g *Game) drawWall(screen *ebiten.Image) {
+	op := &ebiten.DrawImageOptions{}
+
+	// 左側の壁
+	op.GeoM.Reset()
+	op.GeoM.Scale(float64(g.wall.size)/float64(wallImg.Bounds().Dx()), float64(screenY)/float64(wallImg.Bounds().Dy()))
+	op.GeoM.Translate(g.wall.leftX, 0)
+	screen.DrawImage(wallImg, op)
+
+	// 右側の壁
+	op.GeoM.Reset()
+	op.GeoM.Scale(float64(g.wall.size)/float64(wallImg.Bounds().Dx()), float64(screenY)/float64(wallImg.Bounds().Dy()))
+	op.GeoM.Translate(g.wall.rightX, 0)
+	screen.DrawImage(wallImg, op)
+
+	// 上側の壁
+	op.GeoM.Reset()
+	op.GeoM.Scale(float64(screenX)/float64(wallImg.Bounds().Dx()), float64(g.wall.size)/float64(wallImg.Bounds().Dy()))
+	op.GeoM.Translate(0, g.wall.topY)
+	screen.DrawImage(wallImg, op)
+
+	// 下側の壁
+	op.GeoM.Reset()
+	op.GeoM.Scale(float64(screenX)/float64(wallImg.Bounds().Dx()), float64(g.wall.size)/float64(wallImg.Bounds().Dy()))
+	op.GeoM.Translate(0, g.wall.bottomY)
+	screen.DrawImage(wallImg, op)
 }
 
 // Layout method
