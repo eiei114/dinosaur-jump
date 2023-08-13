@@ -32,8 +32,10 @@ const (
 	modeGameOver = 3
 
 	// image sizes
-	wallHeight = 50
-	wallWidth  = 50
+	playerHeight = 100
+	playerWidth  = 100
+	wallHeight   = 50
+	wallWidth    = 50
 )
 
 //go:embed resources/images/player.png
