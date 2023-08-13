@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	_ "embed"
-	"fmt"
 	"image"
 	"image/color"
 	_ "image/png"
@@ -94,16 +93,13 @@ func (w *wall) move(speed float64) {
 
 // Game struct
 type Game struct {
-	mode      int
-	count     int
-	score     int
-	hiscore   int
-	dinosaurX int
-	dinosaurY int
-	wall      *wall // 壁の配列を追加
-	runes     []rune
-	text      string
-	counter   int
+	mode    int
+	playerX int
+	playerY int
+	wall    *wall // 壁の配列を追加
+	runes   []rune
+	text    string
+	counter int
 }
 
 // NewGame method
@@ -115,11 +111,8 @@ func NewGame() *Game {
 
 // Init method
 func (g *Game) init() {
-	g.hiscore = g.score
-	g.count = 0
-	g.score = 0
-	g.dinosaurX = 100
-	g.dinosaurY = 100
+	g.playerX = 100
+	g.playerY = 100
 	// 壁の初期配置
 	g.wall = &wall{
 		leftX:   0,
@@ -160,27 +153,30 @@ func (g *Game) Update() error {
 		}
 	case modeGame:
 		//todo 障害物に当たったらゲームオーバーになるようにする
-		g.count++
-		g.score = g.count / 5
 
 		//todo マルチプラットフォームになるようにメソッド化する
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-			g.dinosaurY -= 50
+			g.playerY -= 25
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-			g.dinosaurY += 50
+			g.playerY += 25
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
-			g.dinosaurX += 50
+			g.playerX += 25
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
-			g.dinosaurX -= 50
+			g.playerX -= 25
 		}
 
-		g.wall.move(0.1) // 速度は任意で設定可能
+		g.wall.move(0.01) // 速度は任意で設定可能
+
+		// Check for collision with wall
+		if g.isPlayerCollidingWithWall() {
+			g.mode = modeGameOver
+		}
 
 	case modeGameOver:
 		if g.isKeySpaceJustPressed() {
@@ -195,8 +191,6 @@ func (g *Game) Update() error {
 // Draw method
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
-	text.Draw(screen, fmt.Sprintf("Hisore: %d", g.hiscore), arcadeFont, 300, 20, color.Black)
-	text.Draw(screen, fmt.Sprintf("Score: %d", g.score), arcadeFont, 500, 20, color.Black)
 
 	g.drawWall(screen) // 壁を描画
 	g.drawPlayer(screen)
@@ -222,7 +216,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) drawPlayer(screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(g.dinosaurX), float64(g.dinosaurY))
+	op.GeoM.Translate(float64(g.playerX), float64(g.playerY))
 	op.ColorM.Scale(0, 0.99, 0.89, 1) // この例では、赤はそのまま、緑は0.99倍、青は0.89倍にスケーリングされます。
 	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(playerImg, op)
@@ -254,6 +248,29 @@ func (g *Game) drawWall(screen *ebiten.Image) {
 	op.GeoM.Scale(float64(screenX)/float64(wallImg.Bounds().Dx()), float64(g.wall.size)/float64(wallImg.Bounds().Dy()))
 	op.GeoM.Translate(0, g.wall.bottomY)
 	screen.DrawImage(wallImg, op)
+}
+
+func (g *Game) isPlayerCollidingWithWall() bool {
+	playerRight := float64(g.playerX + playerImg.Bounds().Dx())
+	playerBottom := float64(g.playerY + playerImg.Bounds().Dy())
+
+	// 左側の壁との衝突
+	if float64(g.playerX) < g.wall.leftX+float64(g.wall.size) {
+		return true
+	}
+	// 右側の壁との衝突
+	if playerRight > g.wall.rightX {
+		return true
+	}
+	// 上側の壁との衝突
+	if float64(g.playerY) < g.wall.topY+float64(g.wall.size) {
+		return true
+	}
+	// 下側の壁との衝突
+	if playerBottom > g.wall.bottomY {
+		return true
+	}
+	return false
 }
 
 // Layout method
