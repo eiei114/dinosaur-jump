@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"golang.org/x/net/websocket"
 	"image"
 	"image/color"
 	_ "image/png"
 	"log"
 	"math/rand"
+	"net/url"
 	"strings"
 	"time"
 
@@ -98,16 +100,26 @@ type Game struct {
 	mode    int
 	playerX int
 	playerY int
+	players []PlayerInfo
 	wall    *wall // 壁の配列を追加
 	runes   []rune
 	text    string
 	counter int
+	wsConn  *websocket.Conn
+}
+
+type PlayerInfo struct {
+	x        int
+	y        int
+	username string
+	isMine   bool
 }
 
 // NewGame method
 func NewGame() *Game {
 	g := &Game{}
 	g.init()
+	//g.connectToServer()
 	return g
 }
 
@@ -115,6 +127,14 @@ func NewGame() *Game {
 func (g *Game) init() {
 	g.playerX = 100
 	g.playerY = 100
+
+	var player1 PlayerInfo
+	player1.isMine = true
+	player1.x = 100
+	player1.y = 100
+
+	g.players = append(g.players, player1)
+
 	// 壁の初期配置
 	g.wall = &wall{
 		leftX:   0,
@@ -157,20 +177,31 @@ func (g *Game) Update() error {
 		//todo 障害物に当たったらゲームオーバーになるようにする
 
 		//todo マルチプラットフォームになるようにメソッド化する
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyW) {
 			g.playerY -= 25
+			g.players[0].y -= 25
 		}
 
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyS) {
 			g.playerY += 25
+			g.players[0].y += 25
+
 		}
 
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyD) {
 			g.playerX += 25
+			g.players[0].x += 25
+
 		}
 
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyA) {
 			g.playerX -= 25
+			g.players[0].x -= 25
+		}
+
+		if inpututil.IsKeyJustPressed(ebiten.KeyE) {
+			//サーバーにリクエストを送るコードをここに書いて
+			//go g.sendMessageToServer("A message from the client") // using goroutine so it doesn't block the main loop
 		}
 
 		g.wall.move(0.01) // 速度は任意で設定可能
@@ -195,7 +226,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
 
 	g.drawWall(screen) // 壁を描画
-	g.drawPlayer(screen)
+	for i := 0; i == 1+len(g.players); i++ {
+		g.drawPlayer(screen, g.players[i])
+	}
 
 	switch g.mode {
 	case modeTitle:
@@ -216,9 +249,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
-func (g *Game) drawPlayer(screen *ebiten.Image) {
+func (g *Game) Close() {
+	if g.wsConn != nil {
+		g.wsConn.Close()
+	}
+}
+
+func (g *Game) drawPlayer(screen *ebiten.Image, player PlayerInfo) {
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(g.playerX), float64(g.playerY))
+	op.GeoM.Translate(float64(player.x), float64(player.y))
 	op.ColorM.Scale(0, 0.99, 0.89, 1) // この例では、赤はそのまま、緑は0.99倍、青は0.89倍にスケーリングされます。
 	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(playerImg, op)
@@ -308,6 +347,41 @@ func (g *Game) isKeyEnterJustPressed() bool {
 		return true
 	}
 	return false
+}
+
+func (g *Game) connectToServer() {
+	serverAddr := "localhost:8080" // またはお使いのサーバーアドレス
+	u := url.URL{Scheme: "ws", Host: serverAddr, Path: "/ws"}
+	conn, err := websocket.Dial(u.String(), "", "http://"+u.Host)
+	if err != nil {
+		log.Println("サーバーへの接続エラー:", err)
+		return
+	}
+
+	g.wsConn = conn
+}
+
+func (g *Game) sendMessageToServer(message string) {
+	if g.wsConn == nil {
+		log.Println("WebSocket接続が存在しません。")
+		return
+	}
+
+	err := websocket.Message.Send(g.wsConn, message)
+	if err != nil {
+		log.Println("メッセージの送信エラー:", err)
+		return
+	}
+
+	// サーバからの応答を受け取る (応答が不要な場合はこれをスキップできます)
+	var received string
+	err = websocket.Message.Receive(g.wsConn, &received)
+	if err != nil {
+		log.Println("サーバーメッセージの受信エラー:", err)
+		return
+	}
+
+	log.Println("サーバーからの応答:", received)
 }
 
 func main() {
