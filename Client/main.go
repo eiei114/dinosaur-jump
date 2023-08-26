@@ -97,15 +97,16 @@ func (w *wall) move(speed float64) {
 
 // Game struct
 type Game struct {
-	mode    int
-	playerX int
-	playerY int
-	players []PlayerInfo
-	wall    *wall // 壁の配列を追加
-	runes   []rune
-	text    string
-	counter int
-	wsConn  *websocket.Conn
+	mode     int
+	playerX  int
+	playerY  int
+	players  []PlayerInfo
+	myPlayer PlayerInfo
+	wall     *wall // 壁の配列を追加
+	runes    []rune
+	text     string
+	counter  int
+	wsConn   *websocket.Conn
 }
 
 type PlayerInfo struct {
@@ -125,15 +126,8 @@ func NewGame() *Game {
 
 // Init method
 func (g *Game) init() {
-	g.playerX = 100
-	g.playerY = 100
-
-	var player1 PlayerInfo
-	player1.isMine = true
-	player1.x = 100
-	player1.y = 100
-
-	g.players = append(g.players, player1)
+	first := InitPlayer(g.text, true)
+	g.myPlayer = first
 
 	// 壁の初期配置
 	g.wall = &wall{
@@ -171,6 +165,7 @@ func (g *Game) Update() error {
 		g.counter++
 
 		if g.isKeyEnterJustPressed() {
+
 			g.mode = modeGame
 		}
 	case modeGame:
@@ -178,25 +173,21 @@ func (g *Game) Update() error {
 
 		//todo マルチプラットフォームになるようにメソッド化する
 		if inpututil.IsKeyJustPressed(ebiten.KeyW) {
-			g.playerY -= 25
-			g.players[0].y -= 25
+			g.myPlayer.y -= 25
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyS) {
-			g.playerY += 25
-			g.players[0].y += 25
+			g.myPlayer.y += 25
 
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyD) {
-			g.playerX += 25
-			g.players[0].x += 25
+			g.myPlayer.x += 25
 
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyA) {
-			g.playerX -= 25
-			g.players[0].x -= 25
+			g.myPlayer.x -= 25
 		}
 
 		if inpututil.IsKeyJustPressed(ebiten.KeyE) {
@@ -211,8 +202,14 @@ func (g *Game) Update() error {
 			g.mode = modeGameOver
 		}
 
+		if g.isPlayerCollidingWithOtherPlayers() {
+			g.mode = modeGameOver
+		}
+
 	case modeGameOver:
 		if g.isKeySpaceJustPressed() {
+			g.myPlayer.x = 100
+			g.myPlayer.y = 100
 			g.init()
 			g.mode = modeGame
 		}
@@ -226,7 +223,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.White)
 
 	g.drawWall(screen) // 壁を描画
-	for i := 0; i == 1+len(g.players); i++ {
+	g.drawPlayer(screen, g.myPlayer)
+
+	for i := 0; i < len(g.players); i++ {
 		g.drawPlayer(screen, g.players[i])
 	}
 
@@ -253,6 +252,15 @@ func (g *Game) Close() {
 	if g.wsConn != nil {
 		g.wsConn.Close()
 	}
+}
+
+func InitPlayer(username string, isMine bool) PlayerInfo {
+	var player PlayerInfo
+	player.username = username
+	player.isMine = isMine
+	player.x = 100
+	player.y = 100
+	return player
 }
 
 func (g *Game) drawPlayer(screen *ebiten.Image, player PlayerInfo) {
@@ -292,11 +300,11 @@ func (g *Game) drawWall(screen *ebiten.Image) {
 }
 
 func (g *Game) isPlayerCollidingWithWall() bool {
-	playerRight := float64(g.playerX + playerImg.Bounds().Dx())
-	playerBottom := float64(g.playerY + playerImg.Bounds().Dy())
+	playerRight := float64(g.myPlayer.x + playerImg.Bounds().Dx())
+	playerBottom := float64(g.myPlayer.y + playerImg.Bounds().Dy())
 
 	// 左側の壁との衝突
-	if float64(g.playerX) < g.wall.leftX+float64(g.wall.size) {
+	if float64(g.myPlayer.x) < g.wall.leftX+float64(wallWidth) {
 		return true
 	}
 	// 右側の壁との衝突
@@ -304,7 +312,7 @@ func (g *Game) isPlayerCollidingWithWall() bool {
 		return true
 	}
 	// 上側の壁との衝突
-	if float64(g.playerY) < g.wall.topY+float64(g.wall.size) {
+	if float64(g.myPlayer.y) < g.wall.topY+float64(wallHeight) {
 		return true
 	}
 	// 下側の壁との衝突
@@ -312,6 +320,30 @@ func (g *Game) isPlayerCollidingWithWall() bool {
 		return true
 	}
 	return false
+}
+
+func (g *Game) isPlayerCollidingWithOtherPlayers() bool {
+	px1, py1, px2, py2 := g.myPlayer.bounds()
+
+	for _, otherPlayer := range g.players {
+		if otherPlayer.isMine {
+			continue
+		}
+
+		ox1, oy1, ox2, oy2 := otherPlayer.bounds()
+		if px1 < ox2 && px2 > ox1 && py1 < oy2 && py2 > oy1 {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *PlayerInfo) bounds() (x1, y1, x2, y2 int) {
+	x1 = p.x
+	y1 = p.y
+	x2 = p.x + playerWidth
+	y2 = p.y + playerHeight
+	return
 }
 
 // Layout method
