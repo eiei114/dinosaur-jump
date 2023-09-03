@@ -7,6 +7,13 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+type UserInfo struct {
+	Id         int    `json:"id"`
+	Name       string `json:"name"`
+	TransformX int    `json:"transformX"`
+	TransformY int    `json:"transformY"`
+}
+
 func handleWebSocket(c echo.Context) error {
 	websocket.Handler(func(ws *websocket.Conn) {
 		defer ws.Close()
@@ -39,6 +46,8 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Static("/", "public")
-	e.GET("/ws", handleWebSocket)
+	e.POST("/login", func(c echo.Context) error {
+		return nil
+	})
 	e.Logger.Fatal(e.Start(":8080"))
 }

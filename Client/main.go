@@ -113,6 +113,7 @@ type PlayerInfo struct {
 	x        int
 	y        int
 	username string
+	id       int
 	isMine   bool
 }
 
