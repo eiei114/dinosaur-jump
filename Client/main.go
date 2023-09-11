@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"golang.org/x/net/websocket"
 	"image"
 	"image/color"
@@ -206,6 +207,8 @@ func (g *Game) Update() error {
 		if g.isPlayerCollidingWithOtherPlayers() {
 			g.mode = modeGameOver
 		}
+
+		fmt.Println("プレイヤー情報", g.myPlayer)
 
 	case modeGameOver:
 		if g.isKeySpaceJustPressed() {
