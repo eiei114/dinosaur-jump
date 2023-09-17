@@ -1,18 +1,24 @@
-package persistence
+package infrastructure
 
 import (
 	"context"
 	"example.com/domain"
+	"github.com/uptrace/bun"
 )
 
 type UserRepository struct {
+	Conn *bun.DB
 }
 
-func NewUserRepository() *UserRepository {
-	return &UserRepository{}
+func NewUserRepository(Conn *bun.DB) *UserRepository {
+	return &UserRepository{Conn: Conn}
 }
 
-func (u *UserRepository) AddUser(ctx context.Context, id, authToken, name string) error {
+func (u *UserRepository) AddUser(ctx context.Context, id, name string) (*domain.User, error) {
+	return nil, nil
+}
+
+func (u *UserRepository) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 

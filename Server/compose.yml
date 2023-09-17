@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+  mysql:
+    image: mysql/mysql-server:8.0
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_unicode_ci
+    environment:
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_ROOT_PASSWORD: "dinosaur"
+      MYSQL_DATABASE: "user_database"
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d
+      - ./db-data:/var/lib/mysql
+
+volumes:
+  db-data:
+    driver: local
