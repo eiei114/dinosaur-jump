@@ -3,7 +3,6 @@ package main
 import (
 	"example.com/application/service"
 	"example.com/config"
-	db_init "example.com/db/init"
 	infrastructure "example.com/infrastructure/persistence"
 	_interface "example.com/interface/handler"
 	"github.com/uptrace/bunrouter"
@@ -12,15 +11,13 @@ import (
 func main() {
 	db, _ := config.NewDBConnection()
 
-	db_init.CreateTable(db)
-
 	userRepository := infrastructure.NewUserRepository(db)
-
-	service.NewUserService(userRepository)
+	userService := service.NewUserService(userRepository)
+	userHandler := _interface.NewUserHandler(userService)
 
 	router := bunrouter.New()
-	router.POST("/login", _interface.LoginHandle())
-	router.POST("/move", _interface.MoveHandle())
-	router.POST("/destroy", _interface.DestroyHandle())
-	router.GET("/other", _interface.OtherPlayerHandle())
+	router.POST("/login", userHandler.LoginHandle())
+	router.POST("/move", userHandler.MoveHandle())
+	router.POST("/destroy", userHandler.DestroyHandle())
+	router.GET("/other", userHandler.OtherPlayerHandle())
 }
