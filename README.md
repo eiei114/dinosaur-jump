@@ -8,3 +8,16 @@ Made with Ebiten.
 $ go run main.go
 ```
 
+クリエイト
+```shell
+Invoke-WebRequest -Method POST -Headers @{"Content-Type" = "application/json"} -Body '{"name":"YourUserName"}' -Uri http://localhost/user/create
+```
+ユーザーゲット
+```shell
+Invoke-WebRequest -Method POST -Headers @{"Content-Type" = "application/json"} -Body '{"auth_token":"2bd314be-ee78-4d33-926d-68e6894b8c57"}' -Uri http://localhost:8080/user/get
+```
+ランキング情報取得
+```shell
+Invoke-WebRequest -Method GET -Uri http://localhost:8080/users/get
+```
+

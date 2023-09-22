@@ -3,14 +3,14 @@ package main
 import (
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"fmt"
-	"golang.org/x/net/websocket"
 	"image"
 	"image/color"
 	_ "image/png"
 	"log"
 	"math/rand"
-	"net/url"
+	"net/http"
 	"strings"
 	"time"
 
@@ -98,16 +98,19 @@ func (w *wall) move(speed float64) {
 
 // Game struct
 type Game struct {
-	mode     int
-	playerX  int
-	playerY  int
-	players  []PlayerInfo
-	myPlayer PlayerInfo
-	wall     *wall // 壁の配列を追加
-	runes    []rune
-	text     string
-	counter  int
-	wsConn   *websocket.Conn
+	mode               int
+	playerX            int
+	playerY            int
+	players            []PlayerInfo
+	myPlayer           PlayerInfo
+	wall               *wall // 壁の配列を追加
+	runes              []rune
+	text               string
+	counter            int
+	npcs               []PlayerInfo
+	speedMultiplier    float64
+	maxSpeedMultiplier float64
+	timePassed         float64 // 経過時間（秒）
 }
 
 type PlayerInfo struct {
@@ -120,9 +123,10 @@ type PlayerInfo struct {
 
 // NewGame method
 func NewGame() *Game {
-	g := &Game{}
+	g := &Game{
+		maxSpeedMultiplier: 10.0, // この値は任意で設定できます。例として3倍速とします。
+	}
 	g.init()
-	//g.connectToServer()
 	return g
 }
 
@@ -130,6 +134,7 @@ func NewGame() *Game {
 func (g *Game) init() {
 	first := InitPlayer(g.text, true)
 	g.myPlayer = first
+	g.timePassed = 0
 
 	// 壁の初期配置
 	g.wall = &wall{
@@ -139,6 +144,14 @@ func (g *Game) init() {
 		bottomY: screenY - wallHeight,
 		size:    50,
 	}
+
+	// NPCの初期化: 前回のNPCをクリアしてから新しいNPCを追加
+	g.npcs = []PlayerInfo{}
+	g.npcs = append(g.npcs, InitNPC("NPC1"))
+	g.npcs = append(g.npcs, InitNPC("NPC2"))
+	g.npcs = append(g.npcs, InitNPC("NPC3"))
+
+	g.speedMultiplier = 1.0 // 初期の乗数
 }
 
 // Update method
@@ -171,9 +184,9 @@ func (g *Game) Update() error {
 			g.mode = modeGame
 		}
 	case modeGame:
-		//todo 障害物に当たったらゲームオーバーになるようにする
 
-		//todo マルチプラットフォームになるようにメソッド化する
+		g.timePassed += 1 / 60.0 // 60FPSを仮定
+
 		if inpututil.IsKeyJustPressed(ebiten.KeyW) {
 			g.myPlayer.y -= 25
 		}
@@ -197,7 +210,7 @@ func (g *Game) Update() error {
 			//go g.sendMessageToServer("A message from the client") // using goroutine so it doesn't block the main loop
 		}
 
-		g.wall.move(0.01) // 速度は任意で設定可能
+		//g.wall.move(0.01) // 速度は任意で設定可能
 
 		// Check for collision with wall
 		if g.isPlayerCollidingWithWall() {
@@ -210,16 +223,82 @@ func (g *Game) Update() error {
 
 		fmt.Println("プレイヤー情報", g.myPlayer)
 
+		// NPCsを更新
+		for i := range g.npcs {
+			g.moveNPC(&g.npcs[i])
+		}
+
+		// Check for collision with NPCs
+		if g.isPlayerCollidingWithNPCs() {
+			g.mode = modeGameOver
+		}
+
+		g.speedMultiplier += 0.001 // この値は微調整する必要があります。
+		if g.speedMultiplier > g.maxSpeedMultiplier {
+			g.speedMultiplier = g.maxSpeedMultiplier
+		}
+
 	case modeGameOver:
 		if g.isKeySpaceJustPressed() {
-			g.myPlayer.x = 100
-			g.myPlayer.y = 100
 			g.init()
 			g.mode = modeGame
 		}
 	}
 
 	return nil
+}
+
+func InitNPC(name string) PlayerInfo {
+	var npc PlayerInfo
+	npc.username = name
+	// Adjusting the initial position of the NPC considering the collision offset
+	npc.x = rand.Intn(screenX-playerWidth*2) + playerWidth/2
+	npc.y = rand.Intn(screenY-playerHeight*2) + playerHeight/2
+	return npc
+}
+
+func (g *Game) isPlayerCollidingWithNPCs() bool {
+	px1, py1, px2, py2 := g.myPlayer.bounds()
+
+	collisionOffset := 50 // Adjust this value to increase or decrease the collision offset
+
+	for _, npc := range g.npcs {
+		nx1, ny1, nx2, ny2 := npc.x+collisionOffset, npc.y+collisionOffset, npc.x+playerWidth-collisionOffset, npc.y+playerHeight-collisionOffset
+		if px1 < nx2 && px2 > nx1 && py1 < ny2 && py2 > ny1 {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Game) moveNPC(npc *PlayerInfo) {
+	direction := rand.Intn(4)             // 0:上, 1:下, 2:左, 3:右
+	moveAmount := 5.0 * g.speedMultiplier // 乗数を考慮して移動量を計算
+
+	switch direction {
+	case 0:
+		npc.y -= int(moveAmount)
+	case 1:
+		npc.y += int(moveAmount)
+	case 2:
+		npc.x -= int(moveAmount)
+	case 3:
+		npc.x += int(moveAmount)
+	}
+
+	// NPCがスクリーンから出ないようにする
+	if npc.x < 0 {
+		npc.x = 0
+	}
+	if npc.y < 0 {
+		npc.y = 0
+	}
+	if npc.x > screenX-playerWidth {
+		npc.x = screenX - playerWidth
+	}
+	if npc.y > screenY-playerHeight {
+		npc.y = screenY - playerHeight
+	}
 }
 
 // Draw method
@@ -231,6 +310,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	for i := 0; i < len(g.players); i++ {
 		g.drawPlayer(screen, g.players[i])
+	}
+
+	for _, npc := range g.npcs {
+		g.drawNpcPlayer(screen, npc)
 	}
 
 	switch g.mode {
@@ -246,16 +329,30 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 		text.Draw(screen, t, arcadeFont, 275, 240, color.Black)
 	case modeGame:
-
+		timeText := fmt.Sprintf("%.1f", g.timePassed)
+		text.Draw(screen, timeText, arcadeFont, screenX-50, 20, color.White)
 	case modeGameOver:
+		screen.Fill(color.White) // Clear the screen
+
+		users, err := getUserData()
+		if err == nil {
+			// リストの開始位置を定義
+			yPosition := 260
+
+			// 配列内の各ユーザー情報を表示
+			for _, user := range users {
+				text.Draw(screen, fmt.Sprintf("Name: %s", user.Name), arcadeFont, 275, yPosition, color.Black)
+				yPosition += 20 // 次の行の位置に移動
+				text.Draw(screen, fmt.Sprintf("HighScore: %d", user.HighScore), arcadeFont, 275, yPosition, color.Black)
+				yPosition += 20 // 次の行の位置に移動
+			}
+		}
 		text.Draw(screen, "GAME OVER", arcadeFont, 275, 240, color.Black)
 	}
 }
 
 func (g *Game) Close() {
-	if g.wsConn != nil {
-		g.wsConn.Close()
-	}
+
 }
 
 func InitPlayer(username string, isMine bool) PlayerInfo {
@@ -271,6 +368,14 @@ func (g *Game) drawPlayer(screen *ebiten.Image, player PlayerInfo) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(player.x), float64(player.y))
 	op.ColorM.Scale(0, 0.99, 0.89, 1) // この例では、赤はそのまま、緑は0.99倍、青は0.89倍にスケーリングされます。
+	op.Filter = ebiten.FilterLinear
+	screen.DrawImage(playerImg, op)
+}
+
+func (g *Game) drawNpcPlayer(screen *ebiten.Image, player PlayerInfo) {
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(player.x), float64(player.y))
+	op.ColorM.Scale(1, 0, 0, 1)
 	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(playerImg, op)
 }
@@ -385,45 +490,30 @@ func (g *Game) isKeyEnterJustPressed() bool {
 	return false
 }
 
-func (g *Game) connectToServer() {
-	serverAddr := "localhost:8080" // またはお使いのサーバーアドレス
-	u := url.URL{Scheme: "ws", Host: serverAddr, Path: "/ws"}
-	conn, err := websocket.Dial(u.String(), "", "http://"+u.Host)
-	if err != nil {
-		log.Println("サーバーへの接続エラー:", err)
-		return
-	}
-
-	g.wsConn = conn
-}
-
-func (g *Game) sendMessageToServer(message string) {
-	if g.wsConn == nil {
-		log.Println("WebSocket接続が存在しません。")
-		return
-	}
-
-	err := websocket.Message.Send(g.wsConn, message)
-	if err != nil {
-		log.Println("メッセージの送信エラー:", err)
-		return
-	}
-
-	// サーバからの応答を受け取る (応答が不要な場合はこれをスキップできます)
-	var received string
-	err = websocket.Message.Receive(g.wsConn, &received)
-	if err != nil {
-		log.Println("サーバーメッセージの受信エラー:", err)
-		return
-	}
-
-	log.Println("サーバーからの応答:", received)
-}
-
 func main() {
 	ebiten.SetWindowSize(screenX, screenY)
 	ebiten.SetWindowTitle("Dinosaur Jump")
 	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
 	}
+}
+
+type User struct {
+	Name      string `json:"name"`
+	HighScore int    `json:"highScore"`
+}
+
+func getUserData() ([]User, error) {
+	resp, err := http.Get("http://localhost:8080/users/get")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var users []User
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
